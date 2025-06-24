@@ -1,14 +1,34 @@
 import socket
+import threading
 
-# Use Tailscale IP of the server
-HOST = '100.85.57.104'  # Replace this with your server's Tailscale IP
-PORT = 12345
+# Drone connection details
+drones = [
+    ("100.85.57.104", 12345),  # Drone 1
+    ("100.85.57.104", 22222),  # Drone 2
+]
 
-client_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-client_socket.connect((HOST, PORT))
+message = "start mission"
 
-message = "Hello from client over Tailscale!"
-client_socket.sendall(message.encode())
+def send_to_drone(host, port, msg):
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.connect((host, port))
+        sock.sendall(msg.encode())
+        print(f"✅ Sent to {host}:{port}")
+        sock.close()
+    except Exception as e:
+        print(f"❌ Error sending to {host}:{port} — {e}")
 
-print("Sent:", message)
-client_socket.close()
+# Create and start threads
+threads = []
+for host, port in drones:
+    thread = threading.Thread(target=send_to_drone, args=(host, port, message))
+    thread.start()
+    threads.append(thread)
+
+# Wait for all threads to finish
+for thread in threads:
+    thread.join()
+
+print("📡 Mission start signal sent to all drones.")
+

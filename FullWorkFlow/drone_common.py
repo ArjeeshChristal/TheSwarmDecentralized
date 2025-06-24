@@ -1,19 +1,11 @@
-import socket
-import threading
-import logging
-
-# Drone imports
 from dronekit import connect, VehicleMode, Command
 from pymavlink import mavutil
 from shapely.ops import split
 from shapely.geometry import Polygon, LineString
-from test_workflow import QuadplaneSurvey
-from shared_config import *
-import time
+import time, logging
 
-# Logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("DroneMission")
+logger = logging.getLogger("DroneCommon")
 
 def arm_and_takeoff(vehicle, target_altitude):
     vehicle.mode = VehicleMode("GUIDED")
@@ -27,10 +19,14 @@ def arm_and_takeoff(vehicle, target_altitude):
             break
         time.sleep(1)
 
-def split_polygon(poly: Polygon):
+def split_polygon_by_index(poly: Polygon, total_parts: int, index: int):
     minx, miny, maxx, maxy = poly.bounds
-    midx = (minx + maxx) / 2
-    return split(poly, LineString([(midx, miny), (midx, maxy)]))
+    step = (maxx - minx) / total_parts
+    slice_line = LineString([
+        (minx + index * step, miny),
+        (minx + index * step, maxy)
+    ])
+    return split(poly, slice_line)
 
 def upload_and_execute(vehicle, wps):
     cmds = vehicle.commands
@@ -51,42 +47,4 @@ def upload_and_execute(vehicle, wps):
                      0,0,0))
     cmds.upload()
     vehicle.mode = VehicleMode("AUTO")
-
-def start_mission():
-    vehicle = connect('udp:127.0.0.1:14550', wait_ready=True)
-    arm_and_takeoff(vehicle, ALTITUDE_M)
-
-    survey = QuadplaneSurvey()
-    survey.KML_PATH = KML_PATH
-    poly = survey.read_polygon()
-    parts = [p for p in split_polygon(poly).geoms if isinstance(p, Polygon)]
-    wps, _ = survey.generate_lawnmower(parts[0])
-    upload_and_execute(vehicle, wps)
-
-    vehicle.close()
-    logger.info("Mission complete.")
-
-# Server socket setup
-HOST = '0.0.0.0'
-PORT = 12345
-
-server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-server_socket.bind((HOST, PORT))
-server_socket.listen(1)
-
-print(f"Drone server listening on {HOST}:{PORT}")
-
-while True:
-    conn, addr = server_socket.accept()
-    print(f"Connection from {addr}")
-    data = conn.recv(1024)
-    message = data.decode().strip().lower()
-    print("Received:", message)
-
-    if message == "start mission":
-        print("🚀 Starting mission thread...")
-        mission_thread = threading.Thread(target=start_mission)
-        mission_thread.start()
-
-    conn.close()
 

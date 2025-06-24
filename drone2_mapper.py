@@ -1,13 +1,22 @@
+import socket
+import threading
+import logging
+
+# Drone imports
 from dronekit import connect, VehicleMode, Command
 from pymavlink import mavutil
 from shapely.ops import split
 from shapely.geometry import Polygon, LineString
 from test_workflow import QuadplaneSurvey
-import time, logging
 from shared_config import *
+import time
 
+
+PORT = 22221
+
+# Logging
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("Drone2")
+logger = logging.getLogger("DroneMission")
 
 def arm_and_takeoff(vehicle, target_altitude):
     vehicle.mode = VehicleMode("GUIDED")
@@ -46,7 +55,7 @@ def upload_and_execute(vehicle, wps):
     cmds.upload()
     vehicle.mode = VehicleMode("AUTO")
 
-if __name__ == '__main__':
+def start_mission():
     vehicle = connect('udp:127.0.0.1:14551', wait_ready=True)
     arm_and_takeoff(vehicle, ALTITUDE_M)
 
@@ -58,5 +67,28 @@ if __name__ == '__main__':
     upload_and_execute(vehicle, wps)
 
     vehicle.close()
-    logger.info("Drone 2 mission complete.")
+    logger.info("Mission complete.")
+
+# Server socket setup
+HOST = '0.0.0.0'
+
+server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+server_socket.bind((HOST, PORT))
+server_socket.listen(1)
+
+print(f"Drone server listening on {HOST}:{PORT}")
+
+while True:
+    conn, addr = server_socket.accept()
+    print(f"Connection from {addr}")
+    data = conn.recv(1024)
+    message = data.decode().strip().lower()
+    print("Received:", message)
+
+    if message == "start mission":
+        print("🚀 Starting mission thread...")
+        mission_thread = threading.Thread(target=start_mission)
+        mission_thread.start()
+
+    conn.close()
 
