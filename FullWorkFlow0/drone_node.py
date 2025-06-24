@@ -7,6 +7,8 @@ from test_workflow import QuadplaneSurvey
 from shapely.geometry import Polygon
 from shared_config import ALTITUDE_M, KML_PATH
 import time
+import json
+
 
 # Settings for this drone
 DRONE_ID = 0           # Change this for each drone (e.g., 0, 1, 2...)
@@ -34,14 +36,14 @@ def register_with_controller():
         print(f"[Drone {DRONE_ID}] ❌ Failed to register: {e}")
 
 
-def start_mission():
+def start_mission(total_drones):
     vehicle = connect(VEHICLE_CONN, wait_ready=True)
     arm_and_takeoff(vehicle, ALTITUDE_M)
 
     survey = QuadplaneSurvey()
     survey.KML_PATH = KML_PATH
     poly = survey.read_polygon()
-    parts = split_polygon_by_index(poly, TOTAL_DRONES, DRONE_ID)
+    parts = split_polygon_by_index(poly, total_drones, DRONE_ID)
 
     sub_poly = None
     for p in parts.geoms:
@@ -53,10 +55,11 @@ def start_mission():
     upload_and_execute(vehicle, wps)
 
     vehicle.close()
-    logger.info("🚀 Drone mission complete.")
+    logger.info("🚁 Mission complete.")
 
-# Listen for trigger message
-def listener():
+
+
+#def listener():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_socket.bind(('0.0.0.0', PORT))
     server_socket.listen(1)
@@ -64,11 +67,19 @@ def listener():
 
     while True:
         conn, addr = server_socket.accept()
-        msg = conn.recv(1024).decode().strip().lower()
-        if msg == "start mission":
-            print(f"[Drone {DRONE_ID}] Mission trigger received.")
-            threading.Thread(target=start_mission).start()
+        data = conn.recv(1024).decode().strip()
         conn.close()
+
+        try:
+            msg = json.loads(data)
+            if msg.get("command") == "start mission":
+                total_drones = msg.get("total_drones", 1)
+                print(f"[Drone {DRONE_ID}] 🚀 Mission trigger received (Total drones: {total_drones})")
+
+                # Launch with dynamic count
+                threading.Thread(target=start_mission, args=(total_drones,)).start()
+        except Exception as e:
+            print(f"[Drone {DRONE_ID}] ❌ Invalid message received: {e}")
 
 if __name__ == '__main__':
     register_with_controller()

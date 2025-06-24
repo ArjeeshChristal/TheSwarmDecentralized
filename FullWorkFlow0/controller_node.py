@@ -29,7 +29,12 @@ def registration_server():
         threading.Thread(target=handle_registration, args=(conn, addr)).start()
 
 def send_mission_start():
-    message = "start mission"
+    total_drones = len(registered_drones)
+    message = json.dumps({
+        "command": "start mission",
+        "total_drones": total_drones
+    })
+
     threads = []
     for drone_id, (host, port) in registered_drones.items():
         def send(host, port):
@@ -48,6 +53,7 @@ def send_mission_start():
     for t in threads:
         t.join()
     print("✅ Mission start command sent to all registered drones.")
+
 
 if __name__ == "__main__":
     threading.Thread(target=registration_server, daemon=True).start()

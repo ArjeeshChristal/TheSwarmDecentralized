@@ -1,0 +1,33 @@
+ReaDme
+
+Swarm SITL
+
+instances
+
+
+*Note : The UDP must change systematically*
+Drone 0
+../Tools/autotest/sim_vehicle.py -j4 -f quadplane-tilttri --instance 0 --out=udp:127.0.0.1:14550 --map --console
+
+Drone 1
+../Tools/autotest/sim_vehicle.py -j4 -f quadplane-tilttri --instance 1 --out=udp:127.0.0.1:14551 --map --console
+
+Drone 2
+../Tools/autotest/sim_vehicle.py -j4 -f quadplane-tilttri --instance 2 --out=udp:127.0.0.1:14552 --map --console
+
+
+
+
+
+Mavproxy to link both the instances
+
+mavproxy.py --master=127.0.0.1:5760 --master=127.0.0.1:5761 --out=udp:127.0.0.1:14560
+
+
+
+
+cmd2.py - to fly both the uavs and map just by one file, good when on telemetry (risky)
+
+
+
+
