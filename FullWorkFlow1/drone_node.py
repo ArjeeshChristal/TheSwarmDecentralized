@@ -11,8 +11,8 @@ import json
 
 
 # Settings for this drone
-DRONE_ID = 0           # Change this for each drone (e.g., 0, 1, 2...)
-TOTAL_DRONES = 1       # Optional if controller sends it
+DRONE_ID = 1           # Change this for each drone (e.g., 0, 1, 2...)
+TOTAL_DRONES = 2       # Optional if controller sends it
 PORT = 12345 + DRONE_ID
 VEHICLE_CONN = f'udp:127.0.0.1:{14550 + DRONE_ID}'
 
@@ -60,6 +60,7 @@ def start_mission(total_drones):
 
 def listener():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # ✅ Add this line
     server_socket.bind(('0.0.0.0', PORT))
     server_socket.listen(1)
     print(f"[Drone {DRONE_ID}] Listening on port {PORT}...")

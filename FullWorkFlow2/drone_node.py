@@ -61,6 +61,7 @@ def start_mission(total_drones):
 # Listen for trigger message
 def listener():
     server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # ✅ Add this line
     server_socket.bind(('0.0.0.0', PORT))
     server_socket.listen(1)
     print(f"[Drone {DRONE_ID}] Listening on port {PORT}...")
