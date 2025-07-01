@@ -1,89 +1,93 @@
 import socket
 import threading
 import logging
+import json
+import time
 from drone_common import arm_and_takeoff, split_polygon_by_index, upload_and_execute
 from dronekit import connect
-from test_workflow import QuadplaneSurvey
 from shapely.geometry import Polygon
+from test_workflow import QuadplaneSurvey
 from shared_config import ALTITUDE_M, KML_PATH
-import time
-import json
 
-
-# Settings for this drone
-DRONE_ID = 1           # Change this for each drone (e.g., 0, 1, 2...)
-TOTAL_DRONES = 2       # Optional if controller sends it
+# === CONFIGURATION ===
+DRONE_ID = 0  # <-- Change this for each drone (0, 1, 2, ...)
 PORT = 12345 + DRONE_ID
 VEHICLE_CONN = f'udp:127.0.0.1:{14550 + DRONE_ID}'
+CONTROLLER_IP = "100.94.138.35"  # <-- Change if controller IP is different
+CONTROLLER_PORT = 5000
+# =====================
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(f"Drone-{DRONE_ID}")
 
-def register_with_controller():
-    REG_CONTROLLER_IP = "100.94.138.35"  # Controller Tailscale IP
-    REG_CONTROLLER_PORT = 5000
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.connect((REG_CONTROLLER_IP, REG_CONTROLLER_PORT))
-        data = json.dumps({
-            "id": DRONE_ID,
-            "port": PORT
-        })
-        sock.sendall(data.encode())
-        sock.close()
-        print(f"[Drone {DRONE_ID}] ✅ Registered with controller.")
-    except Exception as e:
-        print(f"[Drone {DRONE_ID}] ❌ Failed to register: {e}")
+def listener(conn, vehicle):
+    """Listen for mission start commands."""
+    while True:
+        data = conn.recv(1024)
+        if not data:
+            break
+        try:
+            msg = json.loads(data.decode())
+            if msg.get("command") == "start mission":
+                total = msg.get("total_drones", 1)
+                logger.info(f"🚀 Mission trigger (drones: {total})")
+                threading.Thread(target=start_mission, args=(vehicle, total), daemon=True).start()
+        except Exception as e:
+            logger.error(f"Invalid message: {e}")
 
+def gps_sender(conn, vehicle):
+    """Continuously send GPS coordinates."""
+    while True:
+        loc = vehicle.location.global_frame
+        if loc.lat is not None:
+            payload = json.dumps({
+                "id": DRONE_ID,
+                "lat": loc.lat,
+                "lon": loc.lon,
+                "alt": loc.alt
+            })
+            try:
+                conn.sendall((payload + "\n").encode())
+            except Exception as e:
+                logger.error(f"👎 Failed to send GPS: {e}")
+                break
+        time.sleep(1)
 
-def start_mission(total_drones):
-    vehicle = connect(VEHICLE_CONN, wait_ready=True)
+def start_mission(vehicle, total_drones):
+    """Arm, take off, split area, execute survey."""
     arm_and_takeoff(vehicle, ALTITUDE_M)
-
     survey = QuadplaneSurvey()
     survey.KML_PATH = KML_PATH
     poly = survey.read_polygon()
-    parts = split_polygon_by_index(poly, total_drones, DRONE_ID)
-
-    sub_poly = None
-    for p in parts.geoms:
-        if isinstance(p, Polygon):
-            sub_poly = p
-            break
-
-    wps, _ = survey.generate_lawnmower(sub_poly)
+    sub = split_polygon_by_index(poly, total_drones, DRONE_ID).geoms[0]
+    wps, _ = survey.generate_lawnmower(sub)
     upload_and_execute(vehicle, wps)
-
-    vehicle.close()
     logger.info("🚁 Mission complete.")
 
+def main():
+    vehicle = connect(VEHICLE_CONN, wait_ready=True)
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.connect((CONTROLLER_IP, CONTROLLER_PORT))
+    s.sendall(json.dumps({"id": DRONE_ID, "port": PORT}).encode())
+    logger.info("✅ Registered with controller")
 
-def listener():
-    server_socket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server_socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)  # ✅ Add this line
-    server_socket.bind(('0.0.0.0', PORT))
-    server_socket.listen(1)
-    print(f"[Drone {DRONE_ID}] Listening on port {PORT}...")
+    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.bind(('0.0.0.0', PORT))
+    server.listen(1)
+    logger.info(f"Listening on port {PORT}...")
 
+    conn, addr = server.accept()
+    logger.info(f"Connected controller: {addr}")
+
+    threading.Thread(target=listener, args=(conn, vehicle), daemon=True).start()
+    threading.Thread(target=gps_sender, args=(conn, vehicle), daemon=True).start()
+
+    # Keep the main thread alive
     while True:
-        conn, addr = server_socket.accept()
-        data = conn.recv(1024).decode().strip()
-        conn.close()
-
-        try:
-            msg = json.loads(data)
-            if msg.get("command") == "start mission":
-                total_drones = msg.get("total_drones", 1)
-                print(f"[Drone {DRONE_ID}] 🚀 Mission trigger received (Total drones: {total_drones})")
-
-                # Launch with dynamic count
-                threading.Thread(target=start_mission, args=(total_drones,)).start()
-        except Exception as e:
-            print(f"[Drone {DRONE_ID}] ❌ Invalid message received: {e}")
-
+        time.sleep(10)
 
 if __name__ == '__main__':
-    register_with_controller()
-    listener()
+    main()
 
 
