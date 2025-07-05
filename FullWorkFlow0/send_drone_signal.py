@@ -4,7 +4,20 @@ from typing import Dict, Any
 import threading
 import os
 import time
-from config import CONTROLLER_IP, CONTROLLER_PORT, STATUS_UPDATE_INTERVAL, DRONE_ID
+from config import CONTROLLER_IP, CONTROLLER_PORT, STATUS_UPDATE_INTERVAL, DRONE_ID, DRONE_IP
+# --- Registration Function ---
+def register_with_controller():
+    # Use the DRONE_IP from config.py
+    registration = {"id": DRONE_ID, "ip": DRONE_IP}
+    try:
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.connect((CONTROLLER_IP, CONTROLLER_PORT))
+        s.sendall(json.dumps(registration).encode())
+        s.close()
+        print(f"Registered with controller: {registration}")
+    except Exception as e:
+        print(f"Failed to register with controller: {e}")
+
 
 PEERS_FILE = "peers.json"  # File to store all known drone IPs and ports
 
@@ -87,6 +100,8 @@ def start_receiver():
         server.close()
 
 if __name__ == "__main__":
+    # Register with controller at startup
+    register_with_controller()
     # Start receiver in a separate thread
     threading.Thread(target=start_receiver, daemon=True).start()
     # Start continuous info sharing
