@@ -3,68 +3,81 @@ import json
 from typing import Dict, Any
 import threading
 import os
+import time
+from config import CONTROLLER_IP, CONTROLLER_PORT, STATUS_UPDATE_INTERVAL, DRONE_ID
 
-# Configuration
-DRONE_ID = 0  # <-- Changed for first drone
-DRONE_IP = "100.85.57.104"  # Set this to the drone's local IP or use socket.gethostbyname(socket.gethostname())
-CONTROLLER_IP = "100.94.138.35"
-CONTROLLER_PORT = 6000  # Use a different port for this signal if needed
 PEERS_FILE = "peers.json"  # File to store all known drone IPs and ports
 
-# --- Sender Function ---
-def send_signal():
-    signal: Dict[str, Any] = {
+# --- Drone Status Function (simulate GPS, Baro, etc.) ---
+def get_status():
+    # Replace with real sensor readings in actual drone
+    return {
         "id": DRONE_ID,
-        "ip": DRONE_IP
+        "gps": {"lat": 12.34 + DRONE_ID, "lon": 56.78 + DRONE_ID},
+        "baro": 1000 + DRONE_ID,
+        "velocity": [DRONE_ID, DRONE_ID, DRONE_ID],
+        "heartbeat": time.time()
     }
-    try:
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        s.connect((CONTROLLER_IP, CONTROLLER_PORT))
-        s.sendall(json.dumps(signal).encode())
-        print(f"Signal sent: {signal}")
-        s.close()
-    except Exception as e:
-        print(f"Failed to send signal: {e}")
+
+# --- Continuous Info Sharing Function ---
+def share_info_continuously():
+    while True:
+        # Load latest peers.json each time (it may change)
+        if os.path.exists(PEERS_FILE):
+            with open(PEERS_FILE, "r") as f:
+                try:
+                    peers = json.load(f)
+                except Exception:
+                    peers = []
+        else:
+            peers = []
+        status = get_status()
+        for peer in peers:
+            if peer.get("id") == DRONE_ID:
+                continue  # Don't send to self
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(1)
+                s.connect((peer["ip"], peer.get("port", 5000)))
+                s.sendall(json.dumps(status).encode())
+                s.close()
+            except Exception as e:
+                print(f"Failed to send status to {peer.get('ip', 'unknown')}: {e}")
+        # Also send to controller
+        try:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.settimeout(1)
+            s.connect((CONTROLLER_IP, CONTROLLER_PORT))
+            s.sendall(json.dumps(status).encode())
+            s.close()
+        except Exception as e:
+            print(f"Failed to send status to controller: {e}")
+        time.sleep(STATUS_UPDATE_INTERVAL)
 
 # --- Receiver Function ---
 def start_receiver():
-    RECEIVER_IP = "0.0.0.0"  # Listen on all interfaces
-    RECEIVER_PORT = 5000     # Must match the port used by the sender
+    RECEIVER_IP = "0.0.0.0"
+    RECEIVER_PORT = 5000
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     server.bind((RECEIVER_IP, RECEIVER_PORT))
     server.listen()
     print(f"Receiver listening on {RECEIVER_IP}:{RECEIVER_PORT}...")
-    # Load existing peers if available
-    peers: list[dict[str, Any]] = []
-    if os.path.exists(PEERS_FILE):
-        with open(PEERS_FILE, "r") as f:
-            try:
-                peers = json.load(f)
-            except Exception:
-                peers = []
     try:
         while True:
-            conn, addr = server.accept() # type: ignore
+            conn, addr = server.accept()
             data = conn.recv(4096)
             if data:
                 try:
                     msg = json.loads(data.decode())
-                    # If we receive a list, treat it as a full peers.json update
-                    if isinstance(msg, list):
+                    if isinstance(msg, dict) and "gps" in msg:
+                        print(f"Received status from drone {msg.get('id', 'unknown')}: {msg}")
+                    elif isinstance(msg, list):
                         print(f"Received full peers list update: {msg}")
-                        peers = list(msg)  # type: ignore
                         with open(PEERS_FILE, "w") as f:
-                            json.dump(peers, f, indent=2)
+                            json.dump(msg, f, indent=2)
                     else:
-                        print(f"Received signal from drone: {msg}")
-                        # Add to peers if not already present
-                        if not any(p["id"] == msg["id"] and p["ip"] == msg["ip"] for p in peers):
-                            peers.append(msg)
-                            with open(PEERS_FILE, "w") as f:
-                                json.dump(peers, f, indent=2)
-                        response: Dict[str, Any] = {"status": "received", "drone_id": msg.get("id")}
-                        conn.sendall(json.dumps(response).encode())
+                        print(f"Received: {msg}")
                 except Exception as e:
                     print(f"Invalid data received: {e}")
             conn.close()
@@ -76,11 +89,5 @@ def start_receiver():
 if __name__ == "__main__":
     # Start receiver in a separate thread
     threading.Thread(target=start_receiver, daemon=True).start()
-    # Send signal as a client
-    send_signal()
-    # Keep the main thread alive to allow receiver to run
-    try:
-        while True:
-            pass
-    except KeyboardInterrupt:
-        print("\nProgram exiting...")
+    # Start continuous info sharing
+    share_info_continuously()

@@ -23,6 +23,7 @@ def save_peers():
 def broadcast_to_peers():
     for peer in peers:
         try:
+            print(f"Sending peers list to {peer['ip']}...")
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect((peer["ip"], 5000))  # 5000 is the receiver port on the drone
             s.sendall(json.dumps(peers).encode())
@@ -40,6 +41,7 @@ def handle_connection(conn: socket.socket, addr: tuple[str, int]):
             if not any(p["id"] == msg["id"] and p["ip"] == msg["ip"] for p in peers):
                 peers.append(msg)
                 save_peers()
+                print(f"Broadcasting peers list: {peers}")
                 broadcast_to_peers()
         except Exception as e:
             print(f"Invalid data received: {e}")
