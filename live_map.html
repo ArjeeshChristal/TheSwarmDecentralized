@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Drone Swarm Map</title>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <style>
+        #map { height: 100vh; width: 100vw; }
+        .leaflet-control { z-index: 1000; }
+        .custom-btn {
+            background: white;
+            border: 1px solid #888;
+            padding: 4px 10px;
+            margin: 2px;
+            cursor: pointer;
+            border-radius: 4px;
+        }
+    </style>
+</head>
+<body>
+    <div id="map"></div>
+    <div style="position:absolute;top:10px;left:10px;z-index:1001;">
+        <button class="custom-btn" onclick="zoomHome()">Zoom to Home</button>
+        <button class="custom-btn" onclick="fitAll()">Fit All Drones</button>
+    </div>
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script>
+        const HOME_LOCATION = [12.34, 56.78];
+        let map = L.map('map').setView(HOME_LOCATION, 15);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            maxZoom: 19,
+            attribution: '© OpenStreetMap'
+        }).addTo(map);
+        let markers = {};
+        function fetchDrones() {
+            fetch('/drones').then(r => r.json()).then(drones => {
+                // Remove old markers
+                for (let id in markers) {
+                    if (!(id in drones)) {
+                        map.removeLayer(markers[id]);
+                        delete markers[id];
+                    }
+                }
+                // Add/update markers
+                for (let id in drones) {
+                    let d = drones[id];
+                    let latlng = [d.gps.lat, d.gps.lon];
+                    let popup = `<b>Drone</b><br>ID: ${d.id || id}<br>Baro: ${d.baro}<br>Vel: ${d.velocity}`;
+                    // Custom drone icon
+                    let droneIcon = L.icon({
+                        iconUrl: 'https://cdn-icons-png.flaticon.com/512/854/854878.png',
+                        iconSize: [40, 40],
+                        iconAnchor: [20, 20],
+                        popupAnchor: [0, -20]
+                    });
+                    if (markers[id]) {
+                        markers[id].setLatLng(latlng).setPopupContent(popup);
+                    } else {
+                        markers[id] = L.marker(latlng, {icon: droneIcon}).addTo(map).bindPopup(popup);
+                    }
+                }
+            });
+        }
+        setInterval(fetchDrones, 2000);
+        fetchDrones();
+        function zoomHome() {
+            map.setView(HOME_LOCATION, 15);
+        }
+        function fitAll() {
+            let latlngs = Object.values(markers).map(m => m.getLatLng());
+            if (latlngs.length > 0) {
+                let group = new L.featureGroup(Object.values(markers));
+                map.fitBounds(group.getBounds().pad(0.2));
+            }
+        }
+    </script>
+</body>
+</html>

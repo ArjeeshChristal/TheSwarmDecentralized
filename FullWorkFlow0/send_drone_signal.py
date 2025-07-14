@@ -83,7 +83,13 @@ def start_receiver():
             if data:
                 try:
                     msg = json.loads(data.decode())
-                    if isinstance(msg, dict) and "gps" in msg:
+                    # If we receive a dict with 'peers' and 'drones', update both
+                    if isinstance(msg, dict) and "peers" in msg and "drones" in msg:
+                        print(f"Received full peers and drones update: {msg}")
+                        with open(PEERS_FILE, "w") as f:
+                            json.dump(msg["peers"], f, indent=2)
+                        # Optionally, save drone status to a file or update local state here
+                    elif isinstance(msg, dict) and "gps" in msg:
                         print(f"Received status from drone {msg.get('id', 'unknown')}: {msg}")
                     elif isinstance(msg, list):
                         print(f"Received full peers list update: {msg}")

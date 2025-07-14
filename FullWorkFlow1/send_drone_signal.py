@@ -83,12 +83,13 @@ def start_receiver():
             if data:
                 try:
                     msg = json.loads(data.decode())
-                    if isinstance(msg, dict) and "gps" in msg:
-                        print(f"Received status from drone {msg.get('id', 'unknown')}: {msg}")
-                    elif isinstance(msg, list):
+                    # If we receive a list, it's a new peers list, save it
+                    if isinstance(msg, list):
                         print(f"Received full peers list update: {msg}")
                         with open(PEERS_FILE, "w") as f:
                             json.dump(msg, f, indent=2)
+                    elif isinstance(msg, dict) and "gps" in msg:
+                        print(f"Received status from drone {msg.get('id', 'unknown')}: {msg}")
                     else:
                         print(f"Received: {msg}")
                 except Exception as e:
