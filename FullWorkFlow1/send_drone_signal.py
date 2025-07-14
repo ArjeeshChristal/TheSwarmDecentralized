@@ -88,6 +88,13 @@ def start_receiver():
                         print(f"Received full peers list update: {msg}")
                         with open(PEERS_FILE, "w") as f:
                             json.dump(msg, f, indent=2)
+                    elif isinstance(msg, dict) and "command" in msg and msg["command"] == "delete_peers_file":
+                        print("Received delete_peers_file command. Deleting peers.json...")
+                        try:
+                            os.remove(PEERS_FILE)
+                            print("peers.json deleted.")
+                        except Exception as e:
+                            print(f"Failed to delete peers.json: {e}")
                     elif isinstance(msg, dict) and "gps" in msg:
                         print(f"Received status from drone {msg.get('id', 'unknown')}: {msg}")
                     else:

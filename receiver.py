@@ -89,6 +89,18 @@ def start_server():
             threading.Thread(target=handle_connection, args=(conn, addr), daemon=True).start()
     except KeyboardInterrupt:
         print("\nReceiver shutting down...")
+        # On shutdown, send a message to all peers to delete their peers.json
+        for peer in peers:
+            try:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.settimeout(2)
+                s.connect((peer["ip"], 5000))
+                # Send a special command to delete the peers.json file
+                s.sendall(json.dumps({"command": "delete_peers_file"}).encode())
+                s.close()
+                print(f"Sent delete_peers_file command to {peer['ip']}")
+            except Exception as e:
+                print(f"Failed to send delete command to {peer['ip']}: {e}")
     finally:
         server.close()
 
