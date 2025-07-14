@@ -4,6 +4,7 @@ from typing import Dict, Any
 import threading
 import os
 import time
+from dronekit import connect, VehicleMode, LocationGlobal
 from config import CONTROLLER_IP, CONTROLLER_PORT, STATUS_UPDATE_INTERVAL, DRONE_ID, DRONE_IP
 
 PEERS_FILE = "peers.json"  # File to store all known drone IPs and ports
@@ -21,13 +22,18 @@ def register_with_controller():
     except Exception as e:
         print(f"Failed to register with controller: {e}")
 
+vehicle = connect('udp:127.0.0.1:14551', wait_ready=True)
+
 # --- Drone Status Function (simulate GPS, Baro, etc.) ---
 def get_status():
-    # Replace with real sensor readings in actual drone
+    # Always fetch the latest values from the vehicle
+    latitude = vehicle.location.global_frame.lat
+    longitude = vehicle.location.global_frame.lon
+    altitude = vehicle.location.global_frame.alt
     return {
         "id": DRONE_ID,
-        "gps": {"lat": 12.34 + DRONE_ID, "lon": 56.78 + DRONE_ID},
-        "baro": 1000 + DRONE_ID,
+        "gps": {"lat": latitude, "lon": longitude},
+        "baro": altitude,
         "velocity": [DRONE_ID, DRONE_ID, DRONE_ID],
         "heartbeat": time.time()
     }
@@ -83,8 +89,16 @@ def start_receiver():
             if data:
                 try:
                     msg = json.loads(data.decode())
+                    # If we receive a dict with 'peers' and 'drones', update peers.json and print all drone statuses
+                    if isinstance(msg, dict) and "peers" in msg and "drones" in msg:
+                        print(f"Received full peers and drones update: {msg}")
+                        with open(PEERS_FILE, "w") as f:
+                            json.dump(msg["peers"], f, indent=2)
+                        print("All drone statuses:")
+                        for drone_id, status in msg["drones"].items():
+                            print(f"  Drone {drone_id}: {status}")
                     # If we receive a list, it's a new peers list, save it
-                    if isinstance(msg, list):
+                    elif isinstance(msg, list):
                         print(f"Received full peers list update: {msg}")
                         with open(PEERS_FILE, "w") as f:
                             json.dump(msg, f, indent=2)

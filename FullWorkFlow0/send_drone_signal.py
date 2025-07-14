@@ -4,6 +4,8 @@ from typing import Dict, Any
 import threading
 import os
 import time
+# Use DroneKit for real telemetry
+from dronekit import connect, VehicleMode, LocationGlobal
 from config import CONTROLLER_IP, CONTROLLER_PORT, STATUS_UPDATE_INTERVAL, DRONE_ID, DRONE_IP
 # --- Registration Function ---
 def register_with_controller():
@@ -21,13 +23,20 @@ def register_with_controller():
 
 PEERS_FILE = "peers.json"  # File to store all known drone IPs and ports
 
-# --- Drone Status Function (simulate GPS, Baro, etc.) ---
+
+# Connect to the vehicle for real telemetry
+vehicle = connect('udp:127.0.0.1:14550', wait_ready=True)
+
+# --- Drone Status Function (real GPS, Baro, etc.) ---
 def get_status():
-    # Replace with real sensor readings in actual drone
+    # Always fetch the latest values from the vehicle
+    latitude = vehicle.location.global_frame.lat
+    longitude = vehicle.location.global_frame.lon
+    altitude = vehicle.location.global_frame.alt
     return {
         "id": DRONE_ID,
-        "gps": {"lat": 12.34 + DRONE_ID, "lon": 56.78 + DRONE_ID},
-        "baro": 1000 + DRONE_ID,
+        "gps": {"lat": latitude, "lon": longitude},
+        "baro": altitude,
         "velocity": [DRONE_ID, DRONE_ID, DRONE_ID],
         "heartbeat": time.time()
     }
